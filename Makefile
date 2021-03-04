@@ -1,7 +1,7 @@
 all: run
 
 run: build
-	./build/bin/nc
+	./build/bin/nc 555
 
 build: clean
 	conan build . --build-folder build	

